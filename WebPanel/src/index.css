@@ -1,0 +1,300 @@
+@import url('@fontsource/outfit/400.css');
+@import url('@fontsource/outfit/500.css');
+@import url('@fontsource/outfit/600.css');
+@import url('@fontsource/outfit/700.css');
+@import url('@fontsource/inter/400.css');
+@import url('@fontsource/inter/500.css');
+@import url('@fontsource/inter/600.css');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Light Theme */
+  :root,
+  .light {
+    --primary-50: 226 100% 97%;
+    --primary-500: 239 84% 67%;
+    --primary-600: 243 75% 59%;
+    --primary-700: 244 67% 51%;
+    
+    --accent-500: 160 84% 39%;
+    --accent-600: 161 94% 30%;
+    
+    --status-connected: 142 71% 45%;
+    --status-connecting: 38 92% 50%;
+    --status-error: 0 84% 60%;
+    --status-disabled: 220 9% 46%;
+    
+    --background: 0 0% 98%;
+    --foreground: 222 47% 11%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    
+    --accent: 160 84% 39%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 239 84% 67%;
+    
+    --radius: 0.5rem;
+    
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 239 84% 67%;
+    
+    --card-bg: 0 0% 100%;
+    --card-hover: 210 40% 96%;
+    
+    --text-primary: 222 47% 11%;
+    --text-secondary: 215 16% 47%;
+    --text-muted: 215 20% 65%;
+  }
+
+  /* Dark Theme */
+  .dark {
+    --primary-50: 226 100% 97%;
+    --primary-500: 239 84% 67%;
+    --primary-600: 243 75% 59%;
+    --primary-700: 244 67% 51%;
+    
+    --accent-500: 160 84% 39%;
+    --accent-600: 161 94% 30%;
+    
+    --status-connected: 142 71% 45%;
+    --status-connecting: 38 92% 50%;
+    --status-error: 0 84% 60%;
+    --status-disabled: 220 9% 46%;
+    
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 239 84% 67%;
+    --primary-foreground: 210 40% 98%;
+    
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+    
+    --accent: 160 84% 39%;
+    --accent-foreground: 210 40% 98%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --border: 217 33% 25%;
+    --input: 217 33% 25%;
+    --ring: 239 84% 67%;
+    
+    --radius: 0.5rem;
+    
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 215 20% 65%;
+    --sidebar-primary: 239 84% 67%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 25%;
+    --sidebar-ring: 239 84% 67%;
+    
+    --card-bg: 217 32% 27%;
+    --card-hover: 215 25% 35%;
+    
+    --text-primary: 210 40% 98%;
+    --text-secondary: 215 20% 65%;
+    --text-muted: 215 16% 47%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-heading {
+    font-family: 'Outfit', sans-serif;
+  }
+  
+  .font-body {
+    font-family: 'Inter', sans-serif;
+  }
+  
+  /* Status indicators */
+  .status-connected {
+    @apply bg-[hsl(var(--status-connected))];
+  }
+  
+  .status-connecting {
+    @apply bg-[hsl(var(--status-connecting))];
+  }
+  
+  .status-error {
+    @apply bg-[hsl(var(--status-error))];
+  }
+  
+  .status-disabled {
+    @apply bg-[hsl(var(--status-disabled))];
+  }
+  
+  /* Card shadow */
+  .card-shadow {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Modal shadow */
+  .modal-shadow {
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+  
+  /* Scrollbar styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+  
+  /* JSON Editor - react-simple-code-editor */
+  .json-editor-container {
+    background: hsl(var(--background));
+  }
+  
+  .json-editor {
+    min-height: 100%;
+  }
+  
+  .json-editor textarea {
+    outline: none !important;
+  }
+  
+  .json-editor-textarea {
+    outline: none !important;
+  }
+  
+  /* Prism.js Theme - Light */
+  :root .json-editor,
+  .light .json-editor {
+    color: hsl(var(--foreground));
+  }
+  
+  :root .json-editor .token.property,
+  .light .json-editor .token.property {
+    color: hsl(239 84% 50%);
+  }
+  
+  :root .json-editor .token.string,
+  .light .json-editor .token.string {
+    color: hsl(142 71% 35%);
+  }
+  
+  :root .json-editor .token.number,
+  .light .json-editor .token.number {
+    color: hsl(25 95% 45%);
+  }
+  
+  :root .json-editor .token.boolean,
+  .light .json-editor .token.boolean {
+    color: hsl(280 70% 50%);
+  }
+  
+  :root .json-editor .token.null,
+  .light .json-editor .token.null {
+    color: hsl(0 84% 50%);
+  }
+  
+  :root .json-editor .token.punctuation,
+  .light .json-editor .token.punctuation {
+    color: hsl(var(--muted-foreground));
+  }
+  
+  :root .json-editor .token.operator,
+  .light .json-editor .token.operator {
+    color: hsl(var(--foreground));
+  }
+  
+  /* Prism.js Theme - Dark */
+  .dark .json-editor {
+    color: hsl(var(--foreground));
+  }
+  
+  .dark .json-editor .token.property {
+    color: hsl(207 82% 66%);
+  }
+  
+  .dark .json-editor .token.string {
+    color: hsl(95 38% 62%);
+  }
+  
+  .dark .json-editor .token.number {
+    color: hsl(29 54% 61%);
+  }
+  
+  .dark .json-editor .token.boolean {
+    color: hsl(286 60% 67%);
+  }
+  
+  .dark .json-editor .token.null {
+    color: hsl(0 84% 60%);
+  }
+  
+  .dark .json-editor .token.punctuation {
+    color: hsl(var(--muted-foreground));
+  }
+  
+  .dark .json-editor .token.operator {
+    color: hsl(var(--foreground));
+  }
+}
