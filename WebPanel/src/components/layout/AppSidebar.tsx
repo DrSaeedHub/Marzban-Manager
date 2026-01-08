@@ -1,29 +1,28 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  LayoutDashboard, 
-  Server, 
-  FileCode, 
+import {
+  LayoutDashboard,
+  Server,
+  FileCode,
   Settings as SettingsIcon,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { mockPanels, mockTemplates } from '@/lib/mock-data';
 import { Badge } from '@/components/ui/badge';
+import { useDashboardStats } from '@/hooks/use-panels';
 
 interface NavItem {
   icon: React.ElementType;
   label: string;
   route: string;
-  badge?: number;
+  badgeKey?: 'panels' | 'templates';
 }
 
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', route: '/' },
-  { icon: Server, label: 'Panels', route: '/panels', badge: mockPanels.length },
-  { icon: FileCode, label: 'Templates', route: '/templates', badge: mockTemplates.length },
+  { icon: Server, label: 'Panels', route: '/panels', badgeKey: 'panels' },
+  { icon: FileCode, label: 'Templates', route: '/templates', badgeKey: 'templates' },
   { icon: SettingsIcon, label: 'Settings', route: '/settings' },
 ];
 
@@ -34,7 +33,15 @@ interface AppSidebarProps {
 
 export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
   const location = useLocation();
-  
+  const { data: stats } = useDashboardStats();
+
+  const getBadgeValue = (key: 'panels' | 'templates' | undefined): number | undefined => {
+    if (!key || !stats) return undefined;
+    if (key === 'panels') return stats.total_panels;
+    if (key === 'templates') return stats.total_templates;
+    return undefined;
+  };
+
   const isActive = (route: string) => {
     if (route === '/') return location.pathname === '/';
     return location.pathname.startsWith(route);
@@ -51,14 +58,15 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.route);
-          
+          const badge = getBadgeValue(item.badgeKey);
+
           return (
             <Link
               key={item.route}
               to={item.route}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
-                active 
+                active
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
               )}
@@ -86,7 +94,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 )}
               </AnimatePresence>
               <AnimatePresence>
-                {!collapsed && item.badge !== undefined && (
+                {!collapsed && badge !== undefined && badge > 0 && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -94,7 +102,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                     className="ml-auto"
                   >
                     <Badge variant="secondary" className="text-xs px-2 py-0.5 bg-sidebar-accent">
-                      {item.badge}
+                      {badge}
                     </Badge>
                   </motion.div>
                 )}
@@ -103,7 +111,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
           );
         })}
       </nav>
-      
+
       <div className="p-2 border-t border-sidebar-border">
         <button
           onClick={onToggle}

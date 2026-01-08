@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Terminal, Check, ChevronRight, Loader2, AlertCircle, Copy, Eye, EyeOff } from 'lucide-react';
+import { Terminal, Check, X, Loader2, Eye, EyeOff, AlertCircle, RefreshCw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,195 +14,216 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { toast } from 'sonner';
+import { useSSHInstall } from '@/hooks/use-ssh-install';
 import { cn } from '@/lib/utils';
+
+// Helper to detect port conflict errors
+function isPortConflictError(error: string | undefined): boolean {
+  if (!error) return false;
+  const lowered = error.toLowerCase();
+  return lowered.includes('port') && (
+    lowered.includes('already in use') ||
+    lowered.includes('in use') ||
+    lowered.includes('occupied') ||
+    lowered.includes('conflict')
+  );
+}
 
 interface SSHInstallModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  panelId: string;
 }
 
-type Step = 'credentials' | 'options' | 'installing' | 'complete';
+type Step = 'credentials' | 'options' | 'installing' | 'complete' | 'failed';
 
-export function SSHInstallModal({ open, onOpenChange }: SSHInstallModalProps) {
+export function SSHInstallModal({ open, onOpenChange, panelId }: SSHInstallModalProps) {
   const [step, setStep] = useState<Step>('credentials');
-  const [showPassword, setShowPassword] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [installLog, setInstallLog] = useState<string[]>([]);
   
-  // Form state
-  const [host, setHost] = useState('');
-  const [port, setPort] = useState('22');
-  const [username, setUsername] = useState('root');
-  const [password, setPassword] = useState('');
+  // SSH Credentials
+  const [sshHost, setSshHost] = useState('');
+  const [sshPort, setSshPort] = useState('22');
+  const [sshUsername, setSshUsername] = useState('root');
+  const [sshPassword, setSshPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Node Options
   const [nodeName, setNodeName] = useState('');
   const [servicePort, setServicePort] = useState('62050');
   const [apiPort, setApiPort] = useState('62051');
   const [installDocker, setInstallDocker] = useState(true);
   const [startNode, setStartNode] = useState(true);
+  const [autoPorts, setAutoPorts] = useState(false);
+  
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isRetrying, setIsRetrying] = useState(false);
+  
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
-  const steps = [
-    { id: 'credentials', label: 'SSH Credentials' },
-    { id: 'options', label: 'Node Options' },
-    { id: 'installing', label: 'Installing' },
-    { id: 'complete', label: 'Complete' }
-  ];
+  const sshInstall = useSSHInstall({
+    panelId,
+    onComplete: () => setStep('complete'),
+    onError: () => setStep('failed'),
+  });
 
-  const currentStepIndex = steps.findIndex(s => s.id === step);
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logsEndRef.current && sshInstall.logs.length > 0) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [sshInstall.logs]);
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (open) {
+      setStep('credentials');
+      setSshHost('');
+      setSshPort('22');
+      setSshUsername('root');
+      setSshPassword('');
+      setNodeName('');
+      setServicePort('62050');
+      setApiPort('62051');
+      setInstallDocker(true);
+      setStartNode(true);
+      setAutoPorts(false);
+      setErrors({});
+      setIsRetrying(false);
+      sshInstall.reset();
+    }
+  }, [open]);
+  
+  // Check if current error is a port conflict
+  const hasPortConflict = useMemo(
+    () => isPortConflictError(sshInstall.error),
+    [sshInstall.error]
+  );
+
+  // Update step based on install status
+  useEffect(() => {
+    if (sshInstall.isRunning && step !== 'installing') {
+      setStep('installing');
+    }
+  }, [sshInstall.isRunning, step]);
 
   const validateCredentials = () => {
     const newErrors: Record<string, string> = {};
-    if (!host) newErrors.host = 'Host is required';
-    if (!port || parseInt(port) < 1 || parseInt(port) > 65535) {
-      newErrors.port = 'Valid port required (1-65535)';
+    
+    if (!sshHost) {
+      newErrors.sshHost = 'Host is required';
     }
-    if (!username) newErrors.username = 'Username is required';
-    if (!password) newErrors.password = 'Password is required';
+    
+    const port = parseInt(sshPort);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      newErrors.sshPort = 'Port must be 1-65535';
+    }
+    
+    if (!sshUsername) {
+      newErrors.sshUsername = 'Username is required';
+    }
+    
+    if (!sshPassword) {
+      newErrors.sshPassword = 'Password is required';
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const validateOptions = () => {
     const newErrors: Record<string, string> = {};
+    
     if (!nodeName || nodeName.length < 2) {
-      newErrors.nodeName = 'Node name must be at least 2 characters';
+      newErrors.nodeName = 'Node name is required (min 2 chars)';
     }
-    if (!servicePort || parseInt(servicePort) < 1 || parseInt(servicePort) > 65535) {
-      newErrors.servicePort = 'Valid port required';
+    
+    const sPort = parseInt(servicePort);
+    if (isNaN(sPort) || sPort < 1 || sPort > 65535) {
+      newErrors.servicePort = 'Port must be 1-65535';
     }
-    if (!apiPort || parseInt(apiPort) < 1 || parseInt(apiPort) > 65535) {
-      newErrors.apiPort = 'Valid port required';
+    
+    const aPort = parseInt(apiPort);
+    if (isNaN(aPort) || aPort < 1 || aPort > 65535) {
+      newErrors.apiPort = 'Port must be 1-65535';
     }
+    
     if (servicePort === apiPort) {
-      newErrors.apiPort = 'Ports must be different';
+      newErrors.apiPort = 'Must be different from service port';
     }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const startInstallation = (useAutoPorts: boolean = false) => {
+    sshInstall.start({
+      ssh_host: sshHost,
+      ssh_port: parseInt(sshPort),
+      ssh_username: sshUsername,
+      ssh_password: sshPassword,
+      node_name: nodeName,
+      service_port: parseInt(servicePort),
+      api_port: parseInt(apiPort),
+      install_docker: installDocker,
+      start_node: startNode,
+      auto_ports: useAutoPorts,
+    });
+    setStep('installing');
   };
 
   const handleNext = () => {
     if (step === 'credentials') {
       if (validateCredentials()) {
         setStep('options');
-        if (!nodeName) setNodeName(`Node-${host.split('.').slice(-1)[0]}`);
       }
     } else if (step === 'options') {
       if (validateOptions()) {
-        startInstallation();
+        startInstallation(autoPorts);
       }
     }
   };
-
-  const handleBack = () => {
-    if (step === 'options') setStep('credentials');
+  
+  const handleRetryWithAutoPorts = () => {
+    setIsRetrying(true);
+    setAutoPorts(true);
+    sshInstall.reset();
+    // Small delay to ensure reset is complete
+    setTimeout(() => {
+      startInstallation(true);
+      setIsRetrying(false);
+    }, 100);
   };
 
-  const startInstallation = () => {
-    setStep('installing');
-    setProgress(0);
-    setInstallLog([]);
-
-    const logs = [
-      'Connecting to server...',
-      `Connected to ${host}:${port}`,
-      'Checking system requirements...',
-      'System: Ubuntu 22.04 LTS',
-      installDocker ? 'Installing Docker...' : 'Skipping Docker installation',
-      installDocker ? 'Docker installed successfully' : '',
-      'Downloading Marzban Node...',
-      'Extracting files...',
-      'Configuring node service...',
-      `Setting service port: ${servicePort}`,
-      `Setting API port: ${apiPort}`,
-      startNode ? 'Starting Marzban Node service...' : 'Node service configured but not started',
-      startNode ? 'Node service started' : '',
-      'Verifying connection...',
-      'Installation complete!'
-    ].filter(Boolean);
-
-    let currentLog = 0;
-    const interval = setInterval(() => {
-      if (currentLog < logs.length) {
-        setInstallLog(prev => [...prev, logs[currentLog]]);
-        setProgress(((currentLog + 1) / logs.length) * 100);
-        currentLog++;
-      } else {
-        clearInterval(interval);
-        setTimeout(() => setStep('complete'), 500);
-      }
-    }, 500);
+  const handleBack = () => {
+    if (step === 'options') {
+      setStep('credentials');
+    }
   };
 
   const handleClose = () => {
-    onOpenChange(false);
-    // Reset state after animation
-    setTimeout(() => {
-      setStep('credentials');
-      setHost('');
-      setPort('22');
-      setUsername('root');
-      setPassword('');
-      setNodeName('');
-      setServicePort('62050');
-      setApiPort('62051');
-      setInstallDocker(true);
-      setStartNode(true);
-      setErrors({});
-      setProgress(0);
-      setInstallLog([]);
-    }, 300);
-  };
-
-  const handleComplete = () => {
-    toast.success(`Node "${nodeName}" installed successfully`);
-    handleClose();
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+    // Don't allow closing during installation
+    if (step !== 'installing') {
+      onOpenChange(false);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="font-heading flex items-center gap-2">
             <Terminal className="w-5 h-5" />
             SSH Node Installation
           </DialogTitle>
           <DialogDescription>
-            Install Marzban Node on a remote server via SSH
+            {step === 'credentials' && 'Enter SSH credentials for the remote server'}
+            {step === 'options' && 'Configure node options'}
+            {step === 'installing' && 'Installing Marzban node...'}
+            {step === 'complete' && 'Installation completed successfully!'}
+            {step === 'failed' && 'Installation failed'}
           </DialogDescription>
         </DialogHeader>
-
-        {/* Steps indicator */}
-        <div className="flex items-center gap-2 py-4">
-          {steps.map((s, index) => (
-            <div key={s.id} className="flex items-center">
-              <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors",
-                index < currentStepIndex ? "bg-accent text-accent-foreground" :
-                index === currentStepIndex ? "bg-primary text-primary-foreground" :
-                "bg-muted text-muted-foreground"
-              )}>
-                {index < currentStepIndex ? (
-                  <Check className="w-4 h-4" />
-                ) : (
-                  index + 1
-                )}
-              </div>
-              {index < steps.length - 1 && (
-                <div className={cn(
-                  "w-8 h-0.5 mx-1",
-                  index < currentStepIndex ? "bg-accent" : "bg-muted"
-                )} />
-              )}
-            </div>
-          ))}
-        </div>
-
+        
         <AnimatePresence mode="wait">
           {/* Step 1: Credentials */}
           {step === 'credentials' && (
@@ -211,56 +232,58 @@ export function SSHInstallModal({ open, onOpenChange }: SSHInstallModalProps) {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="space-y-4 py-2"
+              className="space-y-4 py-4"
             >
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-2 space-y-2">
-                  <Label htmlFor="host">SSH Host *</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>SSH Host *</Label>
                   <Input
-                    id="host"
                     placeholder="192.168.1.100"
-                    value={host}
-                    onChange={(e) => setHost(e.target.value)}
-                    className={cn(errors.host && 'border-destructive')}
+                    value={sshHost}
+                    onChange={(e) => setSshHost(e.target.value)}
+                    className={cn(errors.sshHost && 'border-destructive')}
                   />
-                  {errors.host && <p className="text-xs text-destructive">{errors.host}</p>}
+                  {errors.sshHost && (
+                    <p className="text-xs text-destructive">{errors.sshHost}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sshPort">Port *</Label>
+                  <Label>SSH Port *</Label>
                   <Input
-                    id="sshPort"
                     type="number"
                     placeholder="22"
-                    value={port}
-                    onChange={(e) => setPort(e.target.value)}
-                    className={cn(errors.port && 'border-destructive')}
+                    value={sshPort}
+                    onChange={(e) => setSshPort(e.target.value)}
+                    className={cn(errors.sshPort && 'border-destructive')}
                   />
-                  {errors.port && <p className="text-xs text-destructive">{errors.port}</p>}
+                  {errors.sshPort && (
+                    <p className="text-xs text-destructive">{errors.sshPort}</p>
+                  )}
                 </div>
               </div>
-
+              
               <div className="space-y-2">
-                <Label htmlFor="sshUsername">Username *</Label>
+                <Label>Username *</Label>
                 <Input
-                  id="sshUsername"
                   placeholder="root"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className={cn(errors.username && 'border-destructive')}
+                  value={sshUsername}
+                  onChange={(e) => setSshUsername(e.target.value)}
+                  className={cn(errors.sshUsername && 'border-destructive')}
                 />
-                {errors.username && <p className="text-xs text-destructive">{errors.username}</p>}
+                {errors.sshUsername && (
+                  <p className="text-xs text-destructive">{errors.sshUsername}</p>
+                )}
               </div>
-
+              
               <div className="space-y-2">
-                <Label htmlFor="sshPassword">Password *</Label>
+                <Label>Password *</Label>
                 <div className="relative">
                   <Input
-                    id="sshPassword"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={cn(errors.password && 'border-destructive', 'pr-10')}
+                    value={sshPassword}
+                    onChange={(e) => setSshPassword(e.target.value)}
+                    className={cn('pr-10', errors.sshPassword && 'border-destructive')}
                   />
                   <button
                     type="button"
@@ -270,7 +293,9 @@ export function SSHInstallModal({ open, onOpenChange }: SSHInstallModalProps) {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                {errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
+                {errors.sshPassword && (
+                  <p className="text-xs text-destructive">{errors.sshPassword}</p>
+                )}
               </div>
             </motion.div>
           )}
@@ -282,55 +307,68 @@ export function SSHInstallModal({ open, onOpenChange }: SSHInstallModalProps) {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="space-y-4 py-2"
+              className="space-y-4 py-4"
             >
               <div className="space-y-2">
-                <Label htmlFor="nodeName">Node Name *</Label>
+                <Label>Node Name *</Label>
                 <Input
-                  id="nodeName"
                   placeholder="DE-Node-1"
                   value={nodeName}
                   onChange={(e) => setNodeName(e.target.value)}
                   className={cn(errors.nodeName && 'border-destructive')}
                 />
-                {errors.nodeName && <p className="text-xs text-destructive">{errors.nodeName}</p>}
+                {errors.nodeName && (
+                  <p className="text-xs text-destructive">{errors.nodeName}</p>
+                )}
               </div>
-
+              
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="installServicePort">Service Port *</Label>
+                  <Label>Service Port *</Label>
                   <Input
-                    id="installServicePort"
                     type="number"
                     placeholder="62050"
                     value={servicePort}
                     onChange={(e) => setServicePort(e.target.value)}
                     className={cn(errors.servicePort && 'border-destructive')}
                   />
-                  {errors.servicePort && <p className="text-xs text-destructive">{errors.servicePort}</p>}
+                  {errors.servicePort && (
+                    <p className="text-xs text-destructive">{errors.servicePort}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="installApiPort">API Port *</Label>
+                  <Label>API Port *</Label>
                   <Input
-                    id="installApiPort"
                     type="number"
                     placeholder="62051"
                     value={apiPort}
                     onChange={(e) => setApiPort(e.target.value)}
                     className={cn(errors.apiPort && 'border-destructive')}
                   />
-                  {errors.apiPort && <p className="text-xs text-destructive">{errors.apiPort}</p>}
+                  {errors.apiPort && (
+                    <p className="text-xs text-destructive">{errors.apiPort}</p>
+                  )}
                 </div>
               </div>
-
-              <div className="space-y-3 pt-2">
+              
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="autoPorts"
+                    checked={autoPorts}
+                    onCheckedChange={(checked) => setAutoPorts(checked as boolean)}
+                  />
+                  <Label htmlFor="autoPorts" className="text-sm">
+                    Auto-assign available ports (if default ports are in use)
+                  </Label>
+                </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="installDocker"
                     checked={installDocker}
                     onCheckedChange={(checked) => setInstallDocker(checked as boolean)}
                   />
-                  <Label htmlFor="installDocker" className="text-sm cursor-pointer">
+                  <Label htmlFor="installDocker" className="text-sm">
                     Install Docker if not present
                   </Label>
                 </div>
@@ -340,8 +378,8 @@ export function SSHInstallModal({ open, onOpenChange }: SSHInstallModalProps) {
                     checked={startNode}
                     onCheckedChange={(checked) => setStartNode(checked as boolean)}
                   />
-                  <Label htmlFor="startNode" className="text-sm cursor-pointer">
-                    Start node service after installation
+                  <Label htmlFor="startNode" className="text-sm">
+                    Start node after installation
                   </Label>
                 </div>
               </div>
@@ -355,29 +393,23 @@ export function SSHInstallModal({ open, onOpenChange }: SSHInstallModalProps) {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="space-y-4 py-2"
+              className="space-y-4 py-4"
             >
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
+                <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Progress</span>
-                  <span className="text-foreground">{Math.round(progress)}%</span>
+                  <span className="text-foreground font-medium">{sshInstall.progress}%</span>
                 </div>
-                <Progress value={progress} className="h-2" />
+                <Progress value={sshInstall.progress} />
               </div>
-
-              <div className="bg-muted rounded-lg p-4 h-48 overflow-y-auto font-mono text-xs custom-scrollbar">
-                {installLog.map((log, index) => (
-                  <div key={index} className="flex items-start gap-2 py-0.5">
-                    <span className="text-accent">$</span>
-                    <span className="text-foreground">{log}</span>
+              
+              <div className="bg-muted rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs">
+                {sshInstall.logs.map((log, index) => (
+                  <div key={index} className="text-muted-foreground">
+                    {log}
                   </div>
                 ))}
-                {step === 'installing' && (
-                  <div className="flex items-center gap-2 py-0.5 text-muted-foreground">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Processing...</span>
-                  </div>
-                )}
+                <div ref={logsEndRef} />
               </div>
             </motion.div>
           )}
@@ -386,70 +418,114 @@ export function SSHInstallModal({ open, onOpenChange }: SSHInstallModalProps) {
           {step === 'complete' && (
             <motion.div
               key="complete"
-              initial={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="py-8 text-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center mx-auto mb-4">
+                <Check className="w-8 h-8 text-accent" />
+              </div>
+              <h3 className="text-lg font-heading font-semibold text-foreground">
+                Installation Complete!
+              </h3>
+              {sshInstall.result && (
+                <div className="mt-4 text-sm text-muted-foreground space-y-1">
+                  <p><strong>Node:</strong> {sshInstall.result.node_name}</p>
+                  <p><strong>Address:</strong> {sshInstall.result.address}</p>
+                  <p><strong>Service Port:</strong> {sshInstall.result.service_port}</p>
+                  <p><strong>API Port:</strong> {sshInstall.result.api_port}</p>
+                  {sshInstall.result.auto_ports_used && (
+                    <p className="text-accent text-xs mt-2">
+                      (Ports were auto-assigned due to conflicts)
+                    </p>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Step 5: Failed */}
+          {step === 'failed' && (
+            <motion.div
+              key="failed"
+              initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               className="py-6 text-center"
             >
-              <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Check className="w-8 h-8 text-accent" />
+              <div className="w-16 h-16 rounded-full bg-destructive/20 flex items-center justify-center mx-auto mb-4">
+                <X className="w-8 h-8 text-destructive" />
               </div>
-              <h3 className="text-lg font-heading font-semibold text-foreground mb-2">
-                Installation Complete!
+              <h3 className="text-lg font-heading font-semibold text-foreground">
+                Installation Failed
               </h3>
-              <p className="text-muted-foreground text-sm mb-4">
-                Node "{nodeName}" has been installed successfully.
-              </p>
-              
-              <div className="bg-muted rounded-lg p-4 text-left space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Address</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-mono text-foreground">{host}</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(host)}>
-                      <Copy className="w-3 h-3" />
-                    </Button>
+              {sshInstall.error && (
+                <div className="mt-3 px-4 py-2 bg-destructive/10 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-destructive justify-center">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-left break-words">{sshInstall.error.replace(/\x1B\[[0-9;]*m/g, '')}</span>
                   </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Service Port</span>
-                  <span className="text-sm font-mono text-foreground">{servicePort}</span>
+              )}
+              
+              {/* Port conflict - offer retry with auto ports */}
+              {hasPortConflict && (
+                <div className="mt-4 p-4 bg-accent/10 rounded-lg border border-accent/20">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    The specified port is already in use. Would you like to retry and let the system automatically assign available ports?
+                  </p>
+                  <Button
+                    onClick={handleRetryWithAutoPorts}
+                    disabled={isRetrying}
+                    className="gap-2"
+                  >
+                    {isRetrying ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    Retry with Auto-Assigned Ports
+                  </Button>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">API Port</span>
-                  <span className="text-sm font-mono text-foreground">{apiPort}</span>
-                </div>
-              </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
-
-        <DialogFooter className="gap-2">
+        
+        <DialogFooter>
           {step === 'credentials' && (
             <>
-              <Button variant="outline" onClick={handleClose}>Cancel</Button>
-              <Button onClick={handleNext} className="gap-2">
+              <Button variant="outline" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button onClick={handleNext}>
                 Next
-                <ChevronRight className="w-4 h-4" />
               </Button>
             </>
           )}
+          
           {step === 'options' && (
             <>
-              <Button variant="outline" onClick={handleBack}>Back</Button>
-              <Button onClick={handleNext} className="gap-2">
-                Install Node
-                <Terminal className="w-4 h-4" />
+              <Button variant="outline" onClick={handleBack}>
+                Back
+              </Button>
+              <Button onClick={handleNext} disabled={sshInstall.isStarting}>
+                {sshInstall.isStarting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Start Installation
               </Button>
             </>
           )}
+          
           {step === 'installing' && (
             <Button variant="outline" disabled>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Installing...
             </Button>
           )}
-          {step === 'complete' && (
-            <Button onClick={handleComplete}>Done</Button>
+          
+          {(step === 'complete' || step === 'failed') && (
+            <Button onClick={handleClose}>
+              Close
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, Trash2, FileText, Pencil } from 'lucide-react';
+import { Trash2, FileText, Pencil } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -11,9 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { Node, formatBytes, mockTemplates } from '@/lib/mock-data';
+import { useTemplates } from '@/hooks/use-templates';
 import { NodeLogsDrawer } from './NodeLogsDrawer';
-import { toast } from 'sonner';
+import type { Node } from '@/types';
 
 interface NodeDetailDrawerProps {
   open: boolean;
@@ -23,13 +23,23 @@ interface NodeDetailDrawerProps {
   onDelete?: (node: Node) => void;
 }
 
+// Format bytes helper
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 export function NodeDetailDrawer({ open, onOpenChange, node, onEdit, onDelete }: NodeDetailDrawerProps) {
   const [showLogs, setShowLogs] = useState(false);
-  
+  const { data: templates } = useTemplates();
+
   if (!node) return null;
 
-  const assignedTemplates = mockTemplates.filter(t => 
-    node.assignedTemplates.includes(t.id)
+  const assignedTemplates = (templates ?? []).filter(t =>
+    node.assigned_templates.includes(t.id)
   );
 
   return (
@@ -44,7 +54,7 @@ export function NodeDetailDrawer({ open, onOpenChange, node, onEdit, onDelete }:
             </div>
           </div>
         </SheetHeader>
-        
+
         <div className="mt-6 space-y-6">
           {/* Connection Info */}
           <div className="space-y-4">
@@ -60,7 +70,7 @@ export function NodeDetailDrawer({ open, onOpenChange, node, onEdit, onDelete }:
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Service Port</span>
-                <span className="text-sm text-foreground">{node.port}</span>
+                <span className="text-sm text-foreground">{node.service_port}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">API Port</span>
@@ -75,23 +85,23 @@ export function NodeDetailDrawer({ open, onOpenChange, node, onEdit, onDelete }:
                 <span className="text-sm text-foreground">{node.usage_coefficient}x</span>
               </div>
             </div>
-            
+
             {node.message && (
               <div className="bg-destructive/10 text-destructive rounded-lg p-4 text-sm">
                 {node.message}
               </div>
             )}
           </div>
-          
+
           <Separator />
-          
+
           {/* Assigned Templates */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium text-foreground">Assigned Templates</h3>
             {assignedTemplates.length > 0 ? (
               <div className="space-y-2">
                 {assignedTemplates.map(template => (
-                  <div 
+                  <div
                     key={template.id}
                     className="bg-muted rounded-lg p-3 flex items-center justify-between"
                   >
@@ -109,9 +119,9 @@ export function NodeDetailDrawer({ open, onOpenChange, node, onEdit, onDelete }:
               <p className="text-sm text-muted-foreground">No templates assigned</p>
             )}
           </div>
-          
+
           <Separator />
-          
+
           {/* Usage Statistics */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium text-foreground">Usage Statistics</h3>
@@ -132,29 +142,29 @@ export function NodeDetailDrawer({ open, onOpenChange, node, onEdit, onDelete }:
               </div>
             </div>
           </div>
-          
+
           <Separator />
-          
+
           {/* Actions */}
           <div className="flex flex-col gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full justify-start gap-2"
               onClick={() => setShowLogs(true)}
             >
               <FileText className="w-4 h-4" />
               View Logs
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full justify-start gap-2"
               onClick={() => onEdit?.(node)}
             >
               <Pencil className="w-4 h-4" />
               Edit Node
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               className="w-full justify-start gap-2"
               onClick={() => onDelete?.(node)}
             >
@@ -164,7 +174,7 @@ export function NodeDetailDrawer({ open, onOpenChange, node, onEdit, onDelete }:
           </div>
         </div>
       </SheetContent>
-      
+
       <NodeLogsDrawer
         open={showLogs}
         onOpenChange={setShowLogs}

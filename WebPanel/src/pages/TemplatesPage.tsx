@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, FileCode, MoreVertical, Pencil, Copy, Trash2 } from 'lucide-react';
+import { Plus, Search, FileCode, MoreVertical, Pencil, Copy, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -18,10 +19,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { mockTemplates, Template } from '@/lib/mock-data';
+import { useTemplates, useDeleteTemplate, useDuplicateTemplate } from '@/hooks/use-templates';
 import { TemplateBuilderModal } from '@/components/modals/TemplateBuilderModal';
 import { DeleteConfirmModal } from '@/components/modals/DeleteConfirmModal';
-import { toast } from 'sonner';
+import type { Template } from '@/types';
 
 export default function TemplatesPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,7 +32,11 @@ export default function TemplatesPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [deletingTemplate, setDeletingTemplate] = useState<Template | null>(null);
 
-  const filteredTemplates = mockTemplates.filter(template => {
+  const { data: templates, isLoading } = useTemplates();
+  const deleteMutation = useDeleteTemplate();
+  const duplicateMutation = useDuplicateTemplate();
+
+  const filteredTemplates = (templates ?? []).filter(template => {
     const matchesSearch = template.tag.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesProtocol = protocolFilter === 'all' || template.protocol === protocolFilter;
     const matchesTransport = transportFilter === 'all' || template.transport === transportFilter;
@@ -39,13 +44,14 @@ export default function TemplatesPage() {
   });
 
   const handleDuplicate = (template: Template) => {
-    toast.success(`Template "${template.tag}" duplicated`);
+    duplicateMutation.mutate(template.id);
   };
 
   const handleDelete = () => {
     if (deletingTemplate) {
-      toast.success(`Template "${deletingTemplate.tag}" deleted`);
-      setDeletingTemplate(null);
+      deleteMutation.mutate(deletingTemplate.id, {
+        onSuccess: () => setDeletingTemplate(null),
+      });
     }
   };
 
@@ -122,7 +128,13 @@ export default function TemplatesPage() {
       </div>
 
       {/* Template Grid */}
-      {filteredTemplates.length === 0 ? (
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl" />
+        </div>
+      ) : filteredTemplates.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -172,8 +184,15 @@ export default function TemplatesPage() {
                         <Pencil className="w-4 h-4 mr-2" />
                         Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDuplicate(template)}>
-                        <Copy className="w-4 h-4 mr-2" />
+                      <DropdownMenuItem
+                        onClick={() => handleDuplicate(template)}
+                        disabled={duplicateMutation.isPending}
+                      >
+                        {duplicateMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Copy className="w-4 h-4 mr-2" />
+                        )}
                         Duplicate
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
@@ -187,7 +206,7 @@ export default function TemplatesPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                
+
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
                     <Badge className={getProtocolColor(template.protocol)}>
@@ -200,13 +219,13 @@ export default function TemplatesPage() {
                       {template.security.toUpperCase()}
                     </Badge>
                   </div>
-                  
+
                   <div className="text-sm text-muted-foreground">
                     Port: <span className="text-foreground">{template.port}</span>
                   </div>
-                  
+
                   <div className="text-sm text-muted-foreground">
-                    Used by: <span className="text-foreground">{template.usedByNodes} nodes</span>
+                    Used by: <span className="text-foreground">{template.used_by_nodes} nodes</span>
                   </div>
                 </div>
               </motion.div>
@@ -226,19 +245,20 @@ export default function TemplatesPage() {
         }}
         editTemplate={editingTemplate}
       />
-      
+
       <DeleteConfirmModal
         open={!!deletingTemplate}
         onOpenChange={(open) => !open && setDeletingTemplate(null)}
         title="Delete Template"
         description={`Are you sure you want to delete "${deletingTemplate?.tag}"?`}
         details={
-          deletingTemplate?.usedByNodes && deletingTemplate.usedByNodes > 0
-            ? [`This template is currently used by ${deletingTemplate.usedByNodes} nodes`]
+          deletingTemplate?.used_by_nodes && deletingTemplate.used_by_nodes > 0
+            ? [`This template is currently used by ${deletingTemplate.used_by_nodes} nodes`]
             : undefined
         }
         onConfirm={handleDelete}
         confirmLabel="Delete Template"
+        isLoading={deleteMutation.isPending}
       />
     </div>
   );

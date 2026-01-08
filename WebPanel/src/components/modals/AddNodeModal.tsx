@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,15 +12,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { toast } from 'sonner';
+import { useCreateNode } from '@/hooks/use-nodes';
 import { cn } from '@/lib/utils';
 
 interface AddNodeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  panelId: string;
 }
 
-export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
+export function AddNodeModal({ open, onOpenChange, panelId }: AddNodeModalProps) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [servicePort, setServicePort] = useState('62050');
@@ -29,65 +30,77 @@ export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
   const [addAsNewHost, setAddAsNewHost] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const createMutation = useCreateNode(panelId);
+
+  // Reset form when modal opens
+  useEffect(() => {
+    if (open) {
+      setName('');
+      setAddress('');
+      setServicePort('62050');
+      setApiPort('62051');
+      setUsageCoefficient('1.0');
+      setAddAsNewHost(true);
+      setErrors({});
+    }
+  }, [open]);
+
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!name || name.length < 2 || name.length > 50) {
       newErrors.name = 'Name must be 2-50 characters';
     }
-    
+
     if (!address) {
       newErrors.address = 'Address is required';
     }
-    
+
     const port = parseInt(servicePort);
     if (isNaN(port) || port < 1 || port > 65535) {
       newErrors.servicePort = 'Port must be 1-65535';
     }
-    
+
     const aPort = parseInt(apiPort);
     if (isNaN(aPort) || aPort < 1 || aPort > 65535) {
       newErrors.apiPort = 'Port must be 1-65535';
     }
-    
+
     if (servicePort === apiPort) {
       newErrors.apiPort = 'API port must be different from service port';
     }
-    
+
     const coef = parseFloat(usageCoefficient);
     if (isNaN(coef) || coef <= 0) {
       newErrors.usageCoefficient = 'Must be a positive number';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = () => {
     if (!validate()) return;
-    
-    toast.success('Node added successfully');
-    onOpenChange(false);
-    
-    // Reset form
-    setName('');
-    setAddress('');
-    setServicePort('62050');
-    setApiPort('62051');
-    setUsageCoefficient('1.0');
-    setAddAsNewHost(true);
-    setErrors({});
+
+    createMutation.mutate(
+      {
+        name,
+        address,
+        port: parseInt(servicePort),
+        api_port: parseInt(apiPort),
+        usage_coefficient: parseFloat(usageCoefficient),
+        add_as_new_host: addAsNewHost,
+      },
+      {
+        onSuccess: () => {
+          onOpenChange(false);
+        },
+      }
+    );
   };
 
   const handleClose = () => {
     onOpenChange(false);
-    setName('');
-    setAddress('');
-    setServicePort('62050');
-    setApiPort('62051');
-    setUsageCoefficient('1.0');
-    setAddAsNewHost(true);
-    setErrors({});
   };
 
   return (
@@ -99,7 +112,7 @@ export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
             Add a new node to this panel
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           {/* Node Name */}
           <div className="space-y-2">
@@ -115,7 +128,7 @@ export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
               <p className="text-xs text-destructive">{errors.name}</p>
             )}
           </div>
-          
+
           {/* Address */}
           <div className="space-y-2">
             <Label htmlFor="address">Address *</Label>
@@ -132,7 +145,7 @@ export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
               <p className="text-xs text-muted-foreground">IP address or hostname of the node server</p>
             )}
           </div>
-          
+
           {/* Ports */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -164,7 +177,7 @@ export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
               )}
             </div>
           </div>
-          
+
           {/* Usage Coefficient */}
           <div className="space-y-2">
             <Label htmlFor="usageCoefficient">Usage Coefficient</Label>
@@ -183,7 +196,7 @@ export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
               <p className="text-xs text-muted-foreground">Traffic multiplier for this node (default: 1.0)</p>
             )}
           </div>
-          
+
           {/* Add as New Host */}
           <div className="flex items-center space-x-2">
             <Checkbox
@@ -196,12 +209,13 @@ export function AddNodeModal({ open, onOpenChange }: AddNodeModalProps) {
             </Label>
           </div>
         </div>
-        
+
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} disabled={createMutation.isPending}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit}>
+          <Button onClick={handleSubmit} disabled={createMutation.isPending}>
+            {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Add Node
           </Button>
         </DialogFooter>

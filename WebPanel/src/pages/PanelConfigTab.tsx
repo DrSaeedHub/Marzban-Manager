@@ -1,46 +1,82 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Maximize2, RotateCcw, Save, RefreshCw } from 'lucide-react';
+import { Maximize2, RotateCcw, Save, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { JsonEditor } from '@/components/common/JsonEditor';
-import { mockPanelConfig } from '@/lib/mock-data';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useXrayConfig, useUpdateXrayConfig, useRestartXrayCore } from '@/hooks/use-xray-config';
 import { toast } from 'sonner';
 
 export default function PanelConfigTab() {
   const { panelId } = useParams<{ panelId: string }>();
-  const config = mockPanelConfig[panelId as keyof typeof mockPanelConfig] || {};
-  
-  const [configJson, setConfigJson] = useState(JSON.stringify(config, null, 2));
+
+  const { data: configData, isLoading, error } = useXrayConfig(panelId);
+  const updateMutation = useUpdateXrayConfig(panelId!);
+  const restartMutation = useRestartXrayCore(panelId!);
+
+  const [configJson, setConfigJson] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
+  const [originalJson, setOriginalJson] = useState('');
+
+  // Update local state when config is loaded
+  useEffect(() => {
+    if (configData?.config) {
+      const json = JSON.stringify(configData.config, null, 2);
+      setConfigJson(json);
+      setOriginalJson(json);
+      setHasChanges(false);
+    }
+  }, [configData]);
 
   const handleConfigChange = (value: string) => {
     setConfigJson(value);
-    setHasChanges(true);
+    setHasChanges(value !== originalJson);
   };
 
   const handleSave = () => {
     try {
-      JSON.parse(configJson);
-      toast.success('Configuration saved successfully');
-      setHasChanges(false);
+      const parsedConfig = JSON.parse(configJson);
+      updateMutation.mutate({ config: parsedConfig }, {
+        onSuccess: () => {
+          setOriginalJson(configJson);
+          setHasChanges(false);
+        },
+      });
     } catch (e) {
       toast.error('Invalid JSON format');
     }
   };
 
   const handleReset = () => {
-    setConfigJson(JSON.stringify(config, null, 2));
+    setConfigJson(originalJson);
     setHasChanges(false);
     toast.info('Configuration reset to last saved state');
   };
 
   const handleRestartCore = () => {
-    toast.info('Restarting Xray core...');
-    setTimeout(() => {
-      toast.success('Xray core restarted successfully');
-    }, 1500);
+    restartMutation.mutate();
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-[500px] rounded-xl" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-destructive">Failed to load configuration</p>
+        <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -82,16 +118,33 @@ export default function PanelConfigTab() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
-        <Button onClick={handleSave} disabled={!hasChanges} className="gap-2">
-          <Save className="w-4 h-4" />
+        <Button
+          onClick={handleSave}
+          disabled={!hasChanges || updateMutation.isPending}
+          className="gap-2"
+        >
+          {updateMutation.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
           Save Changes
         </Button>
         <Button variant="outline" onClick={handleReset} disabled={!hasChanges} className="gap-2">
           <RotateCcw className="w-4 h-4" />
           Reset
         </Button>
-        <Button variant="outline" onClick={handleRestartCore} className="gap-2">
-          <RefreshCw className="w-4 h-4" />
+        <Button
+          variant="outline"
+          onClick={handleRestartCore}
+          disabled={restartMutation.isPending}
+          className="gap-2"
+        >
+          {restartMutation.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
           Restart Core
         </Button>
       </div>

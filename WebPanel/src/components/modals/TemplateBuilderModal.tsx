@@ -22,7 +22,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Template } from '@/lib/mock-data';
+import type { Template } from '@/types';
+import { useCreateTemplate, useUpdateTemplate } from '@/hooks/use-templates';
 import { 
   validateTemplateConfig, 
   getValidOptions, 
@@ -52,7 +53,7 @@ import {
 } from '@/lib/config-validation';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { Check, AlertTriangle, X, Sparkles, Info, AlertCircle, RefreshCw, Shuffle, ChevronDown, Copy, Upload } from 'lucide-react';
+import { Check, AlertTriangle, X, Sparkles, Info, AlertCircle, RefreshCw, Shuffle, ChevronDown, Copy, Upload, Loader2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { JsonViewer } from '@/components/common/JsonViewer';
 import {
@@ -74,6 +75,11 @@ const transports = TRANSPORTS;
 
 export function TemplateBuilderModal({ open, onOpenChange, editTemplate }: TemplateBuilderModalProps) {
   const isEditing = !!editTemplate;
+  
+  // API mutations
+  const createMutation = useCreateTemplate();
+  const updateMutation = useUpdateTemplate();
+  const isPending = createMutation.isPending || updateMutation.isPending;
   
   // Core fields
   const [tag, setTag] = useState(editTemplate?.tag || '');
@@ -474,8 +480,26 @@ export function TemplateBuilderModal({ open, onOpenChange, editTemplate }: Templ
 
   const handleSubmit = () => {
     if (!validation.isValid) return;
-    toast.success(isEditing ? 'Template updated successfully' : 'Template created successfully');
-    onOpenChange(false);
+    
+    const templateData = {
+      tag,
+      protocol: protocol as 'vless' | 'vmess' | 'trojan' | 'shadowsocks',
+      transport,
+      security: security as 'none' | 'tls' | 'reality',
+      port: parseInt(port),
+      config: JSON.parse(generateConfig()),
+    };
+    
+    if (isEditing && editTemplate) {
+      updateMutation.mutate(
+        { id: editTemplate.id, data: templateData },
+        { onSuccess: () => onOpenChange(false) }
+      );
+    } else {
+      createMutation.mutate(templateData, {
+        onSuccess: () => onOpenChange(false),
+      });
+    }
   };
 
   const handleClose = () => {
@@ -2228,7 +2252,8 @@ export function TemplateBuilderModal({ open, onOpenChange, editTemplate }: Templ
           <Button variant="outline" onClick={handleClose} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!validation.isValid} className="w-full sm:w-auto">
+          <Button onClick={handleSubmit} disabled={!validation.isValid || isPending} className="w-full sm:w-auto">
+            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {isEditing ? 'Save Changes' : 'Save Template'}
           </Button>
         </DialogFooter>

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Pencil, MoreVertical, RefreshCw, Trash2, Settings } from 'lucide-react';
+import { ArrowLeft, Pencil, MoreVertical, RefreshCw, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -12,17 +12,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { StatusBadge } from '@/components/common/StatusBadge';
-import { mockPanels, formatTimeAgo, Panel } from '@/lib/mock-data';
+import { usePanel, useDeletePanel, useReconnectPanel } from '@/hooks/use-panels';
+import { formatTimeAgo } from '@/lib/format';
 import { AddPanelModal } from '@/components/modals/AddPanelModal';
 import { DeleteConfirmModal } from '@/components/modals/DeleteConfirmModal';
-import { toast } from 'sonner';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function PanelDetailPage() {
   const { panelId } = useParams<{ panelId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   
-  const panel = mockPanels.find(p => p.id === panelId);
+  const { data: panel, isLoading, error } = usePanel(panelId);
+  const deleteMutation = useDeletePanel();
+  const reconnectMutation = useReconnectPanel();
+  
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -32,14 +36,27 @@ export default function PanelDetailPage() {
     return 'nodes';
   };
 
-  useEffect(() => {
-    // Redirect to nodes tab if at base panel path
-    if (location.pathname === `/panels/${panelId}`) {
-      navigate(`/panels/${panelId}/nodes`, { replace: true });
-    }
-  }, [location.pathname, panelId, navigate]);
+  // Redirect to nodes tab if at base panel path
+  if (panelId && location.pathname === `/panels/${panelId}`) {
+    navigate(`/panels/${panelId}/nodes`, { replace: true });
+  }
 
-  if (!panel) {
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Link to="/panels" className="inline-flex">
+          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-4 h-4" />
+            Back to Panels
+          </Button>
+        </Link>
+        <Skeleton className="h-40 rounded-xl" />
+        <Skeleton className="h-12 w-64 rounded-lg" />
+      </div>
+    );
+  }
+
+  if (error || !panel) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <h2 className="text-xl font-heading font-semibold text-foreground">Panel not found</h2>
@@ -54,8 +71,13 @@ export default function PanelDetailPage() {
   }
 
   const handleDelete = () => {
-    toast.success(`Panel "${panel.name}" deleted successfully`);
-    navigate('/panels');
+    deleteMutation.mutate(panel.id, {
+      onSuccess: () => navigate('/panels'),
+    });
+  };
+
+  const handleReconnect = () => {
+    reconnectMutation.mutate(panel.id);
   };
 
   return (
@@ -91,8 +113,8 @@ export default function PanelDetailPage() {
               </a>
               <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                 <StatusBadge status={panel.status} />
-                <span>{panel.nodeCount} nodes</span>
-                <span>Last sync: {formatTimeAgo(panel.lastSync)}</span>
+                <span>{panel.node_count} nodes</span>
+                <span>Last sync: {formatTimeAgo(panel.last_sync)}</span>
               </div>
             </div>
           </div>
@@ -114,8 +136,15 @@ export default function PanelDetailPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => toast.info('Reconnecting...')}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
+                <DropdownMenuItem 
+                  onClick={handleReconnect}
+                  disabled={reconnectMutation.isPending}
+                >
+                  {reconnectMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
                   Reconnect
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -173,6 +202,7 @@ export default function PanelDetailPage() {
           "All node associations (nodes won't be uninstalled)"
         ]}
         onConfirm={handleDelete}
+        isLoading={deleteMutation.isPending}
       />
     </div>
   );

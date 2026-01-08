@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { AlertTriangle, Check, Loader2, X, Eye, EyeOff } from 'lucide-react';
 import {
@@ -12,8 +12,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Panel } from '@/lib/mock-data';
-import { toast } from 'sonner';
+import { useCreatePanel, useUpdatePanel, useTestPanelConnection } from '@/hooks/use-panels';
+import type { Panel } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface AddPanelModalProps {
@@ -25,83 +25,111 @@ interface AddPanelModalProps {
 type ConnectionStatus = 'not_tested' | 'testing' | 'connected' | 'failed';
 
 export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalProps) {
-  const [url, setUrl] = useState(editPanel?.url || '');
-  const [name, setName] = useState(editPanel?.name || '');
-  const [username, setUsername] = useState(editPanel?.username || '');
+  const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('not_tested');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const createMutation = useCreatePanel();
+  const updateMutation = useUpdatePanel();
+  const testMutation = useTestPanelConnection();
+
   const isEditing = !!editPanel;
+
+  // Reset form when modal opens/closes or editPanel changes
+  useEffect(() => {
+    if (open) {
+      setUrl(editPanel?.url || '');
+      setName(editPanel?.name || '');
+      setUsername(editPanel?.username || '');
+      setPassword(editPanel?.password || '');
+      setConnectionStatus('not_tested');
+      setErrors({});
+    }
+  }, [open, editPanel]);
 
   const handleTestConnection = async () => {
     setConnectionStatus('testing');
-    
-    // Mock API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Randomly succeed or fail for demo
-    if (Math.random() > 0.3) {
-      setConnectionStatus('connected');
-      toast.success('Connection successful!');
-    } else {
-      setConnectionStatus('failed');
-      toast.error('Connection failed: Invalid credentials');
-    }
+
+    testMutation.mutate(
+      { url, username, password },
+      {
+        onSuccess: (data) => {
+          if (data.connected) {
+            setConnectionStatus('connected');
+          } else {
+            setConnectionStatus('failed');
+          }
+        },
+        onError: () => {
+          setConnectionStatus('failed');
+        },
+      }
+    );
   };
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!url) {
       newErrors.url = 'Panel URL is required';
     } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
       newErrors.url = 'URL must start with http:// or https://';
     }
-    
+
     if (!name) {
       newErrors.name = 'Panel name is required';
     } else if (name.length < 2 || name.length > 50) {
       newErrors.name = 'Name must be 2-50 characters';
     }
-    
+
     if (!username) {
       newErrors.username = 'Username is required';
     }
-    
+
     if (!password && !isEditing) {
       newErrors.password = 'Password is required';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = () => {
     if (!validate()) return;
-    
-    toast.success(isEditing ? 'Panel updated successfully' : 'Panel added successfully');
-    onOpenChange(false);
-    
-    // Reset form
-    setUrl('');
-    setName('');
-    setUsername('');
-    setPassword('');
-    setConnectionStatus('not_tested');
-    setErrors({});
+
+    if (isEditing && editPanel) {
+      updateMutation.mutate(
+        {
+          id: editPanel.id,
+          data: { name, url, username, ...(password ? { password } : {}) }
+        },
+        {
+          onSuccess: () => {
+            onOpenChange(false);
+          },
+        }
+      );
+    } else {
+      createMutation.mutate(
+        { name, url, username, password },
+        {
+          onSuccess: () => {
+            onOpenChange(false);
+          },
+        }
+      );
+    }
   };
 
   const handleClose = () => {
     onOpenChange(false);
-    setUrl(editPanel?.url || '');
-    setName(editPanel?.name || '');
-    setUsername(editPanel?.username || '');
-    setPassword('');
-    setConnectionStatus('not_tested');
-    setErrors({});
   };
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -114,7 +142,7 @@ export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalPr
             {isEditing ? 'Update your panel connection details' : 'Connect to a new Marzban panel'}
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           {/* Panel URL */}
           <div className="space-y-2">
@@ -132,7 +160,7 @@ export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalPr
               <p className="text-xs text-muted-foreground">The base URL of your Marzban panel</p>
             )}
           </div>
-          
+
           {/* Panel Name */}
           <div className="space-y-2">
             <Label htmlFor="name">Panel Name *</Label>
@@ -149,7 +177,7 @@ export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalPr
               <p className="text-xs text-muted-foreground">A friendly name for this panel</p>
             )}
           </div>
-          
+
           {/* Username */}
           <div className="space-y-2">
             <Label htmlFor="username">Username *</Label>
@@ -164,7 +192,7 @@ export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalPr
               <p className="text-xs text-destructive">{errors.username}</p>
             )}
           </div>
-          
+
           {/* Password */}
           <div className="space-y-2">
             <Label htmlFor="password">Password {!isEditing && '*'}</Label>
@@ -189,7 +217,7 @@ export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalPr
               <p className="text-xs text-destructive">{errors.password}</p>
             )}
           </div>
-          
+
           {/* Connection Status */}
           <div className={cn(
             "p-4 rounded-lg border",
@@ -223,12 +251,13 @@ export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalPr
                   <span className="text-sm text-destructive">Connection failed</span>
                 </>
               )}
-              
+
               {(connectionStatus === 'not_tested' || connectionStatus === 'failed') && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleTestConnection}
+                  disabled={testMutation.isPending}
                   className="ml-auto"
                 >
                   {connectionStatus === 'failed' ? 'Retry' : 'Test Connection'}
@@ -237,12 +266,13 @@ export function AddPanelModal({ open, onOpenChange, editPanel }: AddPanelModalPr
             </div>
           </div>
         </div>
-        
+
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} disabled={isPending}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit}>
+          <Button onClick={handleSubmit} disabled={isPending}>
+            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {isEditing ? 'Save Changes' : 'Save Panel'}
           </Button>
         </DialogFooter>

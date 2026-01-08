@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Node } from '@/lib/mock-data';
+import type { Node } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface NodeLogsDrawerProps {

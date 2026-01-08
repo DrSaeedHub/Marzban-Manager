@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,7 @@ interface DeleteConfirmModalProps {
   details?: string[];
   onConfirm: () => void;
   confirmLabel?: string;
+  isLoading?: boolean;
 }
 
 export function DeleteConfirmModal({
@@ -28,6 +29,7 @@ export function DeleteConfirmModal({
   details,
   onConfirm,
   confirmLabel = 'Delete',
+  isLoading = false,
 }: DeleteConfirmModalProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -55,11 +57,13 @@ export function DeleteConfirmModal({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
+            disabled={isLoading}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
+            {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
